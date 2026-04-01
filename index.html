@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Intro to Tracing AI/ML Models with THAPI: Triton kernel naming + ITT tracing with THAPI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- Reveal.js core & theme (same CDN style as the source decks) -->
+  <link rel="stylesheet" href="https://unpkg.com/reveal.js@4/dist/reveal.css">
+  <link rel="stylesheet" href="https://unpkg.com/reveal.js@4/dist/theme/white.css" id="theme">
+  <link rel="stylesheet" href="https://unpkg.com/reveal.js@4/plugin/highlight/monokai.css">
+
+  <style>
+    :root {
+      --slide-max-width: 1180px;
+      --text: #111827;
+      --muted: #5b6577;
+      --line: #d9dee7;
+      --accent: #1068bf;
+      --accent-2: #2d8cff;
+      --soft: #f6f8fb;
+      --soft-2: #eef4fb;
+      --green: #2f855a;
+      --orange: #b45309;
+      --red: #b42318;
+    }
+
+    .reveal {
+      color: var(--text);
+      font-size: 34px;
+    }
+    .reveal .slides { text-align: left; }
+    .reveal section { max-width: var(--slide-max-width); }
+    .reveal h1, .reveal h2, .reveal h3 { letter-spacing: 0.2px; text-transform: none; }
+    .reveal h1 { font-size: 2.02em; margin-bottom: 0.18em; }
+    .reveal h2 { font-size: 1.42em; margin-bottom: 0.22em; }
+    .reveal h3 { font-size: 0.92em; color: var(--muted); font-weight: 600; margin-bottom: 0.7em; }
+    .reveal p, .reveal li { line-height: 1.32; }
+    .reveal ul { margin-left: 0.85em; }
+    .reveal li { margin: 0.2em 0; }
+    .reveal strong { font-weight: 700; }
+    .reveal .progress { height: 4px; color: var(--accent); }
+    .reveal .slide-number { font-size: 18px; right: 20px; bottom: 18px; background: rgba(255,255,255,0.78); color: #425466; }
+
+    .top-rule {
+      width: 100%;
+      height: 5px;
+      background: linear-gradient(90deg, var(--accent), #77b8ff 78%, transparent);
+      border-radius: 999px;
+      margin-bottom: 0.8em;
+    }
+
+    .title-wrap {
+      min-height: 78vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+      padding-right: 6rem;
+    }
+
+    .subtitle {
+      font-size: 0.95em;
+      color: var(--muted);
+      margin-top: 0.3em;
+      max-width: 28em;
+    }
+
+    .kicker {
+      color: var(--accent);
+      font-size: 0.62em;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 1em;
+    }
+
+    .argonne-logo {
+      position: absolute;
+      right: 0.5rem;
+      bottom: 0.4rem;
+      width: 12rem;
+      max-width: 20%;
+      opacity: 0.95;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 1.0rem 1.2rem;
+      align-items: start;
+    }
+
+    .two-col-5050 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.95rem 1.15rem;
+      align-items: start;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.7rem;
+      align-items: stretch;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 0.78em 0.9em;
+      background: white;
+      box-shadow: 0 6px 18px rgba(16,24,40,0.04);
+    }
+
+    .soft-card {
+      border: 1px solid #dbe6f3;
+      border-radius: 16px;
+      padding: 0.78em 0.9em;
+      background: linear-gradient(180deg, white 0%, var(--soft) 100%);
+    }
+
+    .label {
+      display: inline-block;
+      font-size: 0.52em;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 800;
+      margin-bottom: 0.48em;
+    }
+
+    .tiny { font-size: 0.64em; line-height: 1.35; }
+    .sm { font-size: 0.78em; }
+    .xs { font-size: 0.66em; line-height: 1.35; }
+    .muted { color: var(--muted); }
+    .tight li { margin: 0.12em 0; }
+
+    .code-wrap pre {
+      margin: 0.25em 0 0 0;
+      border-radius: 16px;
+      padding: 0.55em 0.75em;
+      box-shadow: none;
+      border: 1px solid #1a202c;
+    }
+
+    .reveal pre {
+      width: 100%;
+      box-shadow: none;
+      margin: 0.3em 0 0 0;
+      font-size: 0.55em;
+      line-height: 1.28;
+    }
+
+    .reveal code {
+      text-transform: none;
+      font-size: 0.92em;
+    }
+
+    .inline-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #edf2f7;
+      border: 1px solid #dfe6ef;
+      border-radius: 7px;
+      padding: 0.06em 0.28em;
+      font-size: 0.84em;
+    }
+
+    .trace-list {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: white;
+      padding: 0.55em 0.8em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.58em;
+      line-height: 1.55;
+      box-shadow: 0 6px 18px rgba(16,24,40,0.04);
+    }
+
+    .trace-list .bad { color: var(--red); font-weight: 700; }
+    .trace-list .good { color: var(--green); font-weight: 700; }
+
+    .obs-stack {
+      display: grid;
+      gap: 0.55rem;
+      margin-top: 0.35em;
+    }
+
+    .obs-layer {
+      border-radius: 16px;
+      padding: 0.75em 0.9em;
+      border: 1px solid var(--line);
+      background: white;
+    }
+
+    .obs-layer.runtime { background: linear-gradient(180deg, #f9fbff, #edf5ff); }
+    .obs-layer.model { background: linear-gradient(180deg, #fbfcfe, #f5f7fb); }
+    .obs-layer.kernel { background: linear-gradient(180deg, #fffdf8, #fff7e8); }
+
+    .obs-layer h4 {
+      margin: 0 0 0.22em 0;
+      font-size: 0.74em;
+      font-weight: 800;
+      color: #1f2937;
+    }
+
+    .obs-layer p {
+      margin: 0;
+      font-size: 0.64em;
+      color: #425466;
+    }
+
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      flex-wrap: wrap;
+      margin-top: 0.45em;
+    }
+
+    .flow .box {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: white;
+      padding: 0.34em 0.55em;
+      font-size: 0.58em;
+      font-weight: 700;
+      min-width: 7.2em;
+      text-align: center;
+    }
+
+    .flow .arrow {
+      color: var(--accent);
+      font-weight: 900;
+      font-size: 0.76em;
+      margin: 0 0.05em;
+    }
+
+    .phase-tree {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 0.7em 0.9em;
+      background: white;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.62em;
+      line-height: 1.55;
+    }
+
+    .phase-tree .indent-1 { padding-left: 1.2em; display: block; }
+    .phase-tree .indent-2 { padding-left: 2.4em; display: block; }
+    .phase-tree .indent-3 { padding-left: 3.6em; display: block; }
+
+    .placeholder {
+      border: 1.5px dashed #94a3b8;
+      border-radius: 16px;
+      background: #fbfcfe;
+      padding: 0.85em 0.95em;
+      margin-top: 0.5em;
+      font-size: 0.64em;
+      color: #475467;
+    }
+
+    .caption {
+      display: block;
+      font-size: 0.53em;
+      color: var(--muted);
+      margin-top: 0.35em;
+    }
+
+    .figure-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: white;
+      padding: 0.5em;
+      box-shadow: 0 6px 18px rgba(16,24,40,0.04);
+    }
+
+    .figure-card img {
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      margin: 0;
+      box-shadow: none;
+      border: none;
+    }
+
+    .screenshot-badge {
+      display: inline-block;
+      margin-top: 0.35em;
+      font-size: 0.5em;
+      font-weight: 800;
+      color: #7a4c00;
+      background: #fff5db;
+      border: 1px solid #f0dfac;
+      border-radius: 999px;
+      padding: 0.18em 0.5em;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      padding: 0.45em 0.7em;
+      background: var(--soft-2);
+      border-radius: 0 12px 12px 0;
+      font-size: 0.66em;
+      margin-top: 0.45em;
+    }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.62em;
+      margin-top: 0.25em;
+    }
+
+    .matrix th, .matrix td {
+      border-bottom: 1px solid var(--line);
+      padding: 0.45em 0.3em;
+      vertical-align: top;
+    }
+
+    .matrix th {
+      text-align: left;
+      color: var(--muted);
+      font-size: 0.95em;
+      font-weight: 700;
+    }
+
+    .big-takeaway {
+      margin-top: 0.8em;
+      border: 1px solid #dbe6f3;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #f5f9ff 100%);
+      padding: 0.78em 0.95em;
+      font-size: 0.82em;
+      font-weight: 700;
+      color: #163a63;
+    }
+
+    .section-tag {
+      display: inline-block;
+      margin-bottom: 0.55em;
+      font-size: 0.5em;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: white;
+      background: var(--accent);
+      padding: 0.18em 0.55em;
+      border-radius: 999px;
+    }
+
+    .footer-note {
+      margin-top: 0.55em;
+      color: var(--muted);
+      font-size: 0.57em;
+    }
+
+    .center-ish { display: flex; align-items: center; }
+    .plain-list { list-style: none; margin: 0.2em 0 0 0; padding: 0; }
+    .plain-list li { margin: 0.22em 0; }
+    .plain-list li::before { content: "• "; color: var(--accent); font-weight: 800; }
+
+    .mini-stack {
+      display: grid;
+      gap: 0.42rem;
+      margin-top: 0.3em;
+    }
+
+    .mini-stack .mini {
+      border-radius: 12px;
+      padding: 0.42em 0.58em;
+      background: white;
+      border: 1px solid var(--line);
+      font-size: 0.6em;
+      font-weight: 700;
+    }
+
+    .comparison-col h4 {
+      margin: 0;
+      font-size: 0.7em;
+      font-weight: 800;
+      color: #1f2937;
+    }
+
+    .comparison-col .sub {
+      margin: 0.18em 0 0.45em 0;
+      font-size: 0.54em;
+      color: var(--muted);
+    }
+
+    .quote-strip {
+      border-left: 4px solid #d0d7e2;
+      padding-left: 0.7em;
+      margin-top: 0.55em;
+      color: #344054;
+      font-size: 0.7em;
+    }
+
+    @media (max-width: 1100px) {
+      .two-col, .two-col-5050, .three-col { grid-template-columns: 1fr; }
+      .title-wrap { padding-right: 0; }
+      .argonne-logo { width: 9rem; max-width: 24%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <section>
+        <div class="title-wrap">
+          <div class="top-rule"></div>
+          <div class="kicker">AI profiling &amp; tracing on HPC systems</div>
+          <h1>Making AI traces readable</h1>
+          <h3>Triton kernel naming + ITT tracing with THAPI/iprof</h3>
+          <p class="subtitle">
+            A practical observability story for distributed AI workloads:
+            add semantic model regions, give kernel specializations useful names,
+            and inspect the resulting timeline in one place.
+          </p>
+          <img class="argonne-logo" src="assets/images/Argonne_logo.svg" alt="Argonne National Laboratory logo">
+        </div>
+        <aside class="notes">
+          AI traces become much easier to read when we preserve context at several levels.
+          We are not introducing a new profiler here; we are combining two practical improvements:
+          specialization-aware Triton names and semantic ITT regions captured by THAPI/iprof.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Why this matters</h2>
+        <div class="two-col">
+          <div>
+            <ul class="tight">
+              <li>Distributed AI training is a <strong>stacked execution problem</strong>: model code, runtime communication, and device kernels all interleave.</li>
+              <li>At scale, each step mixes <strong>compute</strong> with <strong>collectives</strong> across ranks, so a slowdown is rarely visible from one layer alone.</li>
+              <li>A useful trace needs enough context to answer three questions:
+                <span class="inline-code">which phase?</span>,
+                <span class="inline-code">which rank/runtime event?</span>,
+                and <span class="inline-code">which kernel variant?</span>
+              </li>
+            </ul>
+            <div class="callout">
+              DDP-style training repeatedly alternates local work with gradient synchronization, so observability must span both model and communication context.
+            </div>
+          </div>
+          <div>
+            <div class="soft-card">
+              <div class="label">Shortened DDP workflow</div>
+              <div class="flow">
+                <div class="box">local batch</div><div class="arrow">→</div>
+                <div class="box">forward</div><div class="arrow">→</div>
+                <div class="box">backward</div><div class="arrow">→</div>
+                <div class="box">all-reduce / sync</div><div class="arrow">→</div>
+                <div class="box">optimizer step</div>
+              </div>
+              <p class="caption">Repeated on every rank, typically through communication libraries such as NCCL / XCCL / oneCCL.</p>
+            </div>
+            <div class="figure-card" style="margin-top:0.55em;">
+              <img src="assets/images/3D_parallelism.svg" alt="3D parallelism overview">
+            </div>
+          </div>
+        </div>
+        <aside class="notes">
+          Here we have some distributed-training context to motivate why single-layer visibility is not enough.
+          The important point to notice is the repeated DDP rhythm: local forward/backward plus collective synchronization.
+          The parallelism image is used as supporting context.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Where existing profilers fall short</h2>
+        <div class="three-col">
+          <div class="card">
+            <div class="label">Kernel ambiguity</div>
+            <p class="sm"><strong>Triton specializations</strong> may differ in block size, warps, or stages, but the profiler view may not make those variants easy to distinguish.</p>
+          </div>
+          <div class="card">
+            <div class="label">Opaque model phases</div>
+            <p class="sm">Without semantic markers, the timeline mostly shows runtime activity and kernels, not <strong>initialization</strong>, <strong>forward</strong>, <strong>backward</strong>, or <strong>per-layer structure</strong>.</p>
+          </div>
+          <div class="card">
+            <div class="label">Scale multiplies confusion</div>
+            <p class="sm">Distributed runs add ranks, collectives, and overlap. A trace with weak labels becomes hard to interpret precisely enough for debugging.</p>
+          </div>
+        </div>
+        <div class="trace-list" style="margin-top:0.6em;">
+          <div><span class="bad">hard to read:</span> step ?  | kernel ??? | sync ??? | another kernel ???</div>
+          <div><span class="good">goal:</span> Step.7 → Forward → Layer.3 → Attn.3 → vadd_bs256_w8_s2</div>
+        </div>
+        <aside class="notes">
+          Frame the visibility gap before introducing solutions.
+          The audience does not need a taxonomy of profilers; they need the practical problem statement:
+          timelines can be technically rich but semantically poor.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>A layered observability view</h2>
+        <div class="two-col">
+          <div class="obs-stack">
+            <div class="obs-layer runtime">
+              <h4>1. Distributed runtime / communication</h4>
+              <p>Which step is waiting on synchronization? Where are collectives and runtime events happening across ranks?</p>
+            </div>
+            <div class="obs-layer model">
+              <h4>2. Model phases / semantic regions</h4>
+              <p>Is time spent in initialization, data generation, forward, backward, optimizer step, or a specific layer block?</p>
+            </div>
+            <div class="obs-layer kernel">
+              <h4>3. Kernel-level specialization</h4>
+              <p>Which concrete Triton specialization ran there? Was it the block-size / warps / stages variant we expected?</p>
+            </div>
+          </div>
+          <div>
+            <div class="soft-card">
+              <div class="label">The talk in one sentence</div>
+              <p class="sm">
+                <strong>ITT</strong> fills in the model-phase layer,
+                <strong>Triton specialization names</strong> fill in the kernel layer, and
+                <strong>THAPI/iprof</strong> captures the resulting events on one timeline.
+              </p>
+              <div class="big-takeaway">
+                Better labels do not replace profiling tools; they make the tools you already have much more informative.
+              </div>
+            </div>
+          </div>
+        </div>
+        <aside class="notes">
+          This is the conceptual spine of the talk.
+          Everything after this slide maps back to one of these layers.
+          Make clear that the point is not "more tracing" in the abstract; it is "the right labels at the right levels."
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Triton problem statement</h2>
+        <div class="two-col">
+          <div>
+            <ul class="tight">
+              <li>Triton often generates multiple <strong>kernel specializations</strong> for the same logical operation.</li>
+              <li>Those specializations can differ in performance-relevant knobs like <span class="inline-code">BLOCK_SIZE</span>, <span class="inline-code">num_warps</span>, and <span class="inline-code">num_stages</span>.</li>
+              <li>If the trace or profiler view does not expose a helpful name, it is hard to tell <strong>which specialization</strong> was active at a given point in time.</li>
+            </ul>
+            <div class="callout">
+              For performance debugging, “a Triton kernel ran here” is not enough; we want a name that preserves the specialization choice.
+            </div>
+          </div>
+          <div>
+            <div class="trace-list">
+              <div>logical op: <strong>vector add</strong></div>
+              <div style="margin-top:0.45em;">specializations:</div>
+              <div>• BLOCK_SIZE=128, warps=4, stages=2</div>
+              <div>• BLOCK_SIZE=256, warps=8, stages=2</div>
+              <div style="margin-top:0.45em;"><span class="bad">bad outcome:</span> both look too similar in the trace</div>
+              <div><span class="good">better:</span> each gets its own readable specialization name</div>
+            </div>
+          </div>
+        </div>
+        <aside class="notes">
+          Set up the concrete Triton example before showing code.
+          Avoid overexplaining Triton itself; the audience only needs the profiling problem: multiple specializations, weak names, poor attribution.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Triton solution: give each specialization a readable name</h2>
+        <div class="two-col">
+          <div class="code-wrap">
+            <pre><code class="language-python" data-trim>
+def _vadd_repr(proxy):
+    bs = proxy.constants["BLOCK_SIZE"]
+    w  = proxy.constants["W_NAME"]
+    s  = proxy.constants["S_NAME"]
+    return f"vadd_bs{bs}_w{w}_s{s}"
+
+@triton.jit(repr=_vadd_repr)
+def vadd(X_ptr, Y_ptr, Z_ptr, N,
+         BLOCK_SIZE: tl.constexpr,
+         W_NAME: tl.constexpr,
+         S_NAME: tl.constexpr):
+    ...
+            </code></pre>
+            <div class="callout">
+              This is a lightweight trick: keep the kernel logic the same, but make the specialization visible to the profiler.
+            </div>
+          </div>
+          <div>
+            <ul class="tight">
+              <li><span class="inline-code">@triton.jit(repr=_vadd_repr)</span> lets the kernel provide a <strong>custom specialization-dependent representation</strong>.</li>
+              <li>The dummy constexpr fields <span class="inline-code">W_NAME</span> and <span class="inline-code">S_NAME</span> are there <strong>for naming only</strong>; they let the name encode warps and stages even though those are launch knobs.</li>
+              <li>The callback reads the specialization constants through <span class="inline-code">proxy.constants</span> and builds a stable string.</li>
+            </ul>
+          </div>
+        </div>
+        <aside class="notes">
+          Walk through the three important mechanisms in order:
+          1) the repr callback,
+          2) the dummy constexpr naming fields,
+          3) the resulting string.
+          Emphasize that W_NAME and S_NAME are intentionally naming-only in this example.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Triton example: launch site and resulting names</h2>
+        <div class="two-col">
+          <div class="code-wrap">
+            <pre><code class="language-python" data-trim>
+grid = (triton.cdiv(N, block_size),)
+
+vadd[grid](x, y, z, N,
+           BLOCK_SIZE=block_size,
+           W_NAME=num_warps,
+           S_NAME=num_stages,
+           num_warps=num_warps,
+           num_stages=num_stages)
+            </code></pre>
+            <p class="caption">Launch code from <span class="inline-code">run_once(...)</span> in the supplied example.</p>
+          </div>
+          <div>
+            <div class="mini-stack">
+              <div class="mini">BLOCK_SIZE=128, warps=4, stages=2 → <span class="inline-code">vadd_bs128_w4_s2</span></div>
+              <div class="mini">BLOCK_SIZE=256, warps=8, stages=2 → <span class="inline-code">vadd_bs256_w8_s2</span></div>
+            </div>
+            <ul class="tight sm" style="margin-top:0.55em;">
+              <li>Same logical kernel, but now each specialization is <strong>distinct in traces and profilers</strong>.</li>
+              <li>This helps with debugging, attribution, and cross-checking that the expected launch configuration actually appeared.</li>
+              <li>We can use the same trick to capture launch-time metadata, but the core concrete example here is the <strong>repr-based specialization name</strong>.</li>
+            </ul>
+          </div>
+        </div>
+        <aside class="notes">
+          This is the "what it buys you" slide.
+          Be explicit that the example names shown here follow directly from the code, and that the grid suffix is optional metadata rather than the essential mechanism.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>THAPI / <code>iprof</code> overview</h2>
+        <div class="two-col">
+          <div>
+            <ul class="tight">
+              <li>Run the application under <strong><code>iprof</code></strong> to collect a timeline-oriented trace.</li>
+              <li>THAPI can export that timeline to a format you can inspect in <strong>Perfetto</strong>.</li>
+              <li>When the application emits <strong>ITT regions</strong>, those semantic markers appear time-aligned with the rest of the runtime activity.</li>
+            </ul>
+            <div class="callout">
+              Practical mental model: <code>iprof</code> captures the run, Perfetto is the viewer, and ITT gives the timeline human-meaningful labels.
+            </div>
+          </div>
+          <div class="soft-card">
+            <div class="label">Adapted “How to use it” flow</div>
+            <div class="flow">
+              <div class="box">run under iprof</div><div class="arrow">→</div>
+              <div class="box">collect trace</div><div class="arrow">→</div>
+              <div class="box">open in Perfetto</div><div class="arrow">→</div>
+              <div class="box">inspect aligned regions</div>
+            </div>
+            <p class="caption">Optional telemetry streams can also be aligned in time, but the main story here is semantic model tracing plus runtime activity.</p>
+          </div>
+        </div>
+        <aside class="notes">
+          Mention optional telemetry only briefly; do not let it take over the story.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>ITT-instrumented Llama demo: before vs. after</h2>
+        <div class="two-col-5050">
+          <div class="comparison-col">
+            <h4>Before: plain training loop</h4>
+            <p class="sub">From <span class="inline-code">train_llama3_demo.py</span></p>
+            <pre><code class="language-python" data-trim>
+for step in range(args.steps):
+    x, y = get_batch()
+    optim.zero_grad(set_to_none=True)
+
+    logits = model(x)
+    loss = F.cross_entropy(...)
+
+    loss.backward()
+    optim.step()
+            </code></pre>
+          </div>
+          <div class="comparison-col">
+            <h4>After: semantic regions with ITT</h4>
+            <p class="sub">From <span class="inline-code">train_llama3_demo_with_itt.py</span></p>
+            <pre><code class="language-python" data-trim>
+for step in range(args.steps):
+    with ittapi.task(f"Step.{step}", domain=args.itt_domain):
+        x, y = get_batch()
+
+        with ittapi.task("Forward", domain=args.itt_domain):
+            logits = model(x); loss = F.cross_entropy(...)
+
+        with ittapi.task("Backward", domain=args.itt_domain):
+            loss.backward()
+
+        with ittapi.task("Optimizer.Step", domain=args.itt_domain):
+            optim.step()
+            </code></pre>
+          </div>
+        </div>
+        <div class="callout" style="margin-top:0.55em;">
+          The instrumented version also adds <span class="inline-code">Init.MPI</span>, <span class="inline-code">Init.ProcessGroup</span>, <span class="inline-code">Init.Model</span>, and <span class="inline-code">Data.Generate</span> regions.
+        </div>
+        <aside class="notes">
+          This is the main before/after slide.
+          The audience should see that the code change is straightforward: wrap the major semantic phases in ittapi.task(...).
+          Mention that the training script is otherwise still a normal DDP toy model.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>ITT granularity inside the model</h2>
+        <div class="two-col">
+          <div class="code-wrap">
+            <pre><code class="language-python" data-trim>
+def forward(self, x):
+    with ittapi.task(f"Layer.{self.layer_idx}",
+                     domain=self.itt_domain):
+        with ittapi.task(f"Attn.{self.layer_idx}",
+                         domain=self.itt_domain):
+            x = x + self.attn(self.n1(x))
+        with ittapi.task(f"MLP.{self.layer_idx}",
+                         domain=self.itt_domain):
+            x = x + self.mlp(self.n2(x))
+    return x
+            </code></pre>
+          </div>
+          <div>
+            <div class="phase-tree">
+              Step.7
+              <span class="indent-1">Data.Generate</span>
+              <span class="indent-1">Forward</span>
+              <span class="indent-2">Layer.0</span>
+              <span class="indent-3">Attn.0</span>
+              <span class="indent-3">MLP.0</span>
+              <span class="indent-2">Layer.1</span>
+              <span class="indent-3">Attn.1</span>
+              <span class="indent-3">MLP.1</span>
+              <span class="indent-1">Backward</span>
+              <span class="indent-1">Optimizer.Step</span>
+            </div>
+            <p class="caption">Representative hierarchy; the exact number of layers depends on script arguments.</p>
+          </div>
+        </div>
+        <div class="big-takeaway">
+          These markers turn a timeline from “lots of activity happened here” into “this was attention in layer 3 during the forward pass of step 7.”
+        </div>
+        <aside class="notes">
+          Stress that the model instrumentation is hierarchical:
+          per-step, then forward/backward, then per-layer envelopes, then attention/MLP subregions.
+          This is what makes the resulting timeline readable.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Running the demo with <code>iprof</code></h2>
+        <div class="code-wrap">
+          <pre><code class="language-bash" data-trim>
+module load thapi
+module load frameworks
+
+mpiexec --no-transfer --cpu-bind ${CPU_BIND} -n 24 -ppn 12 $(pwd)/ccl_local_wrap.sh \
+  ${THAPI_ROOT}/bin/iprof -l $(pwd)/demo_with_itt.pftrace --sample \
+  --trace-output $(pwd)/demo_with_itt -- \
+  $(pwd)/ccl_local_wrap.sh python train_llama3_demo_with_itt.py --device=xpu
+          </code></pre>
+        </div>
+        <div class="two-col" style="margin-top:0.35em;">
+          <div class="soft-card">
+            <div class="label">User-level result</div>
+            <ul class="tight sm">
+              <li>A trace is collected during the run.</li>
+              <li>A Perfetto-friendly trace file such as <span class="inline-code">demo_with_itt.pftrace</span> is produced.</li>
+              <li>You can then inspect ITT regions and runtime activity on the same timeline.</li>
+            </ul>
+          </div>
+          <div class="soft-card">
+            <div class="label">Demo note</div>
+            <p class="sm">The README shows both the baseline command and the ITT-instrumented command. For this talk, the ITT version is the one that adds readable semantic structure to the trace.</p>
+          </div>
+        </div>
+        <aside class="notes">
+          Keep this practical. The audience should leave knowing the command shape:
+          mpiexec ... iprof ... python train_llama3_demo_with_itt.py
+          Do not overclaim trace contents beyond what the supplied README and deck support.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Timeline interpretation in Perfetto</h2>
+        <div class="screenshot-badge">Generic Perfetto UI pattern reused from the THAPI telemetry deck — not a screenshot of the Llama ITT demo itself.</div>
+        <div class="placeholder">
+          <strong>Placeholder to replace later:</strong> FIXME add embedded Perfetto here
+        </div>
+        <aside class="notes">
+          Be explicit that this slide uses the existing Perfetto screenshot as a layout and viewer pattern only.
+          If a live demo exists, replace this slide with an actual screenshot from the instrumented Llama run.
+          Describe what the audience should look for: major step envelopes, forward/backward sections, and per-layer subregions.
+        </aside>
+      </section>
+<!-- 
+      <section>
+        <div class="top-rule"></div>
+        <h2>Timeline interpretation in Perfetto</h2>
+        <div class="figure-card">
+          <img src="assets/images/perfetto_screenshot.png" alt="Generic Perfetto screenshot pattern">
+        </div>
+        <div class="screenshot-badge">Generic Perfetto UI pattern of the Llama ITT demo itself.</div>
+        <div class="placeholder">
+          <strong>Placeholder to replace later:</strong> FIXME turn into basement slide with screenshot in case demo fails 
+        </div>
+        <aside class="notes">
+          Be explicit that this slide uses the existing Perfetto screenshot as a layout and viewer pattern only.
+          Describe what the audience should look for: major step envelopes, forward/backward sections, and per-layer subregions.
+        </aside>
+      </section>
+-->
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Why combine Triton naming + ITT tracing?</h2>
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th>Signal</th>
+              <th>What it tells you</th>
+              <th>Example question it answers</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>ITT regions</strong></td>
+              <td>Model-phase and model-structure context</td>
+              <td>Was the slowdown in initialization, forward, backward, optimizer step, or a specific layer?</td>
+            </tr>
+            <tr>
+              <td><strong>Triton specialization names</strong></td>
+              <td>Which concrete kernel variant ran</td>
+              <td>Was this the <span class="inline-code">bs128_w4_s2</span> version or the <span class="inline-code">bs256_w8_s2</span> one?</td>
+            </tr>
+            <tr>
+              <td><strong>THAPI/iprof timeline</strong></td>
+              <td>Time alignment between those signals and runtime activity</td>
+              <td>Exactly when did that specialization appear inside the model step?</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="big-takeaway">
+          Together they answer both <em>where in the model</em> and <em>which kernel specialization</em> — which is exactly the combination you want for debugging, attribution, and tuning.
+        </div>
+        <aside class="notes">
+          This is the synthesis slide.
+          A good phrasing is: ITT gives semantic location; Triton naming gives kernel identity; THAPI/iprof aligns them in time.
+        </aside>
+      </section>
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Tips &amp; guidance, with scope kept honest</h2>
+        <div class="two-col-5050">
+          <div class="card">
+            <div class="label">Tips &amp; guidance</div>
+            <ul class="tight sm">
+              <li>Keep Triton names <strong>stable, short, and meaningful</strong>.</li>
+              <li>Instrument the <strong>major semantic regions first</strong>; add detail only where it improves interpretation.</li>
+              <li>Avoid marker spam. More labels are not automatically better labels.</li>
+              <li>Use a consistent ITT domain name for one logical workload.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="label">Limitations / caveats</div>
+            <ul class="tight sm">
+              <li>ITT regions only exist where you explicitly add them.</li>
+              <li>The dummy Triton constexpr fields in this example are <strong>for naming only</strong>; they are not new algorithmic parameters.</li>
+            </ul>
+          </div>
+        </div>
+        <aside class="notes">
+          This intentionally reuses the concise “Tips and Guidance” and “Some Limitations” pattern from the THAPI telemetry deck.
+          Be careful to distinguish the core workflow from optional telemetry plugins and to avoid unsupported claims.
+        </aside>
+      </section>
+
+      <section>
+        <div class="title-wrap" style="min-height:70vh;">
+          <div class="top-rule"></div>
+          <div class="section-tag">Conclusion</div>
+          <h2>Three takeaways</h2>
+          <ul>
+            <li><strong>Name Triton specializations</strong> so kernel variants are identifiable in traces and profilers.</li>
+            <li><strong>Add ITT regions</strong> so model execution is visible as semantic phases instead of unlabeled activity.</li>
+            <li><strong>Capture the run with THAPI/iprof</strong> so those labels become a usable, time-aligned timeline in Perfetto.</li>
+          </ul>
+          <div class="big-takeaway">
+            Name kernels. Mark phases. Trace once. The resulting timeline is dramatically easier to reason about.
+          </div>
+          <img class="argonne-logo" src="assets/images/Argonne_logo.svg" alt="Argonne National Laboratory logo">
+        </div>
+        <aside class="notes">
+          Close crisply. Do not drift back into CXI details or broader distributed-training topics.
+          The story is observability clarity at multiple levels.
+        </aside>
+      </section>
+
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/reveal.js@4/dist/reveal.js"></script>
+  <script src="https://unpkg.com/reveal.js@4/plugin/highlight/highlight.js"></script>
+  <script src="https://unpkg.com/reveal.js@4/plugin/notes/notes.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true,
+      slideNumber: true,
+      controls: true,
+      progress: true,
+      center: false,
+      width: 1366,
+      height: 768,
+      margin: 0.06,
+      transition: 'slide',
+      plugins: [ RevealHighlight, RevealNotes ]
+    });
+  </script>
+</body>
+</html>
