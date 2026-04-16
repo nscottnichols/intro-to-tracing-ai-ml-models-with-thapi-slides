@@ -5,7 +5,7 @@
   <title>Intro to Tracing AI/ML Models with THAPI: Triton kernel naming + ITT tracing with THAPI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-  <!-- Reveal.js core & theme (same CDN style as the source decks) -->
+  <!-- Reveal.js core & theme -->
   <link rel="stylesheet" href="https://unpkg.com/reveal.js@4/dist/reveal.css">
   <link rel="stylesheet" href="https://unpkg.com/reveal.js@4/dist/theme/white.css" id="theme">
   <link rel="stylesheet" href="https://unpkg.com/reveal.js@4/plugin/highlight/monokai.css">
@@ -537,6 +537,43 @@
         </aside>
       </section>
 
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>Why trace at all, and where THAPI fits</h2>
+        <div class="two-col">
+          <div>
+            <div class="card">
+              <div class="label">Why do tracing?</div>
+              <ul class="tight sm">
+                <li>Timing summaries tell you <strong>how much</strong> time was spent, but traces tell you <strong>when</strong> things happened and <strong>what overlapped</strong>.</li>
+                <li>For distributed AI, that means you can separate <strong>compute</strong>, <strong>communication</strong>, and <strong>idle / waiting</strong> on one time axis.</li>
+                <li>That time alignment is what turns a slowdown from “something is off” into “rank 7 stalled in backward, right before an all-reduce, while these kernels were active.”</li>
+              </ul>
+            </div>
+          </div>
+          <div>
+            <div class="soft-card">
+              <div class="label">THAPI in this story</div>
+              <ul class="tight sm">
+                <li><strong>THAPI</strong> is a tracing infrastructure for heterogeneous applications with backends including CUDA, OpenCL, Intel Level Zero, MPI, OpenMP, and CXI.</li>
+                <li><span class="inline-code">iprof</span> is the main user-facing tool, and it supports aggregated statistics, a timeline mode, and detailed traces.</li>
+                <li>For this talk, the key mode is the <strong>timeline</strong>: capture once, then inspect the result in <strong>Perfetto</strong>.</li>
+              </ul>
+            </div>
+            <div class="flow" style="margin-top:0.5em;">
+              <div class="box">run workload</div><div class="arrow">→</div>
+              <div class="box">trace with THAPI/iprof</div><div class="arrow">→</div>
+              <div class="box">inspect overlap + labels</div>
+            </div>
+          </div>
+        </div>
+        <aside class="notes">
+          This slide gives the audience the missing "why trace?" motivation before we get into specific instrumentation.
+          The main idea is that tracing preserves order and overlap, which is exactly what we need for distributed AI debugging.
+        </aside>
+      </section>
+
       <section>
         <div class="top-rule"></div>
         <h2>Triton problem statement</h2>
@@ -670,6 +707,43 @@ vadd[grid](x, y, z, N,
         </div>
         <aside class="notes">
           Mention optional telemetry only briefly; do not let it take over the story.
+        </aside>
+      </section>
+
+
+      <section>
+        <div class="top-rule"></div>
+        <h2>What ITT adds to a trace</h2>
+        <div class="two-col">
+          <div>
+            <div class="soft-card">
+              <div class="label">ITT in one sentence</div>
+              <p class="sm">The Intel ITT API lets an application <strong>generate and control trace data</strong>, so the timeline can carry names that matter to the user instead of only low-level runtime events.</p>
+            </div>
+            <ul class="tight sm" style="margin-top:0.55em;">
+              <li>Think in terms of <strong>domains</strong> and <strong>tasks / regions</strong>.</li>
+              <li>A domain groups one logical workload; tasks mark the semantic scopes you care about.</li>
+              <li>In this deck, those scopes are things like <span class="inline-code">Init.Model</span>, <span class="inline-code">Forward</span>, <span class="inline-code">Backward</span>, and per-layer regions.</li>
+            </ul>
+          </div>
+          <div>
+            <div class="phase-tree">
+              TrainingLoop
+              <span class="indent-1">Step.7</span>
+              <span class="indent-2">Data.Generate</span>
+              <span class="indent-2">Forward</span>
+              <span class="indent-3">Layer.3</span>
+              <span class="indent-3">Backward</span>
+              <span class="indent-2">Optimizer.Step</span>
+            </div>
+            <div class="callout" style="margin-top:0.55em;">
+              Without ITT, the trace can still be technically correct. With ITT, it becomes <strong>navigable</strong> because the timeline is organized around application meaning.
+            </div>
+          </div>
+        </div>
+        <aside class="notes">
+          This is the missing "what is ITT?" bridge slide before the code example.
+          Keep it conceptual: ITT is the instrumentation API, and we use it to stamp semantic regions onto the timeline.
         </aside>
       </section>
 
